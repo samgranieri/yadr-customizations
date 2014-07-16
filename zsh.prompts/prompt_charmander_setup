@@ -1,0 +1,175 @@
+## Main prompt
+build_prompt() {
+  RETVAL=$?
+  prompt_context
+  prompt_dir
+  prompt_git
+  prompt_status
+  prompt_end
+}
+
+## Env Info (is_ssh?)
+function env_info(){
+  if [[ -n $SSH_CLIENT ]]; then;
+    echo "⇋ %m:"
+  else
+    echo "%m:"
+  fi
+}
+
+zle -N zle-keymap-select
+
+CURRENT_BG='NONE'
+SEGMENT_SEPARATOR=''
+
+# Begin a segment
+# Takes two arguments, background and foreground. Both can be omitted,
+# rendering default background/foreground.
+prompt_segment() {
+  local bg fg
+  [[ -n $1 ]] && bg="%K{$1}" || bg="%k"
+  [[ -n $2 ]] && fg="%F{$2}" || fg="%f"
+  if [[ $CURRENT_BG != 'NONE' && $1 != $CURRENT_BG ]]; then
+    echo -n "%{$bg%F{$CURRENT_BG}%}$SEGMENT_SEPARATOR%{$fg%}"
+  else
+    echo -n "%{$bg%}%{$fg%}"
+  fi
+  CURRENT_BG=$1
+  [[ -n $3 ]] && echo -n $3
+}
+
+# End the prompt, closing any open segments
+prompt_end() {
+  if [[ -n $CURRENT_BG ]]; then
+    echo -n " %{%k%F{$CURRENT_BG}%}$SEGMENT_SEPARATOR"
+  else
+    echo -n "%{%k%}"
+  fi
+  echo "%{%f%}"
+  CURRENT_BG=''
+}
+
+### Prompt components
+# Each component will draw itself, and hide itself if no information needs to be shown
+
+# Context: user@hostname (who am I and where am I) // Only if we are in SSH and we are not the default user.
+prompt_context() {
+  local user=`whoami`
+  if [[ "$user" != "$DEFAULT_USER" || -n $SSH_CLIENT ]]; then
+    prompt_segment none red "%(!.%{%F{yellow}%}.)$user "
+  fi
+  prompt_segment none green "$(env_info)"
+
+}
+parse_git_status() {
+  local gitstat;
+  gitstat=$(git status 2>/dev/null | grep '\(Untracked\|Changes\|Changed but not updated:\)')
+  if [[ $(echo ${gitstat} | grep -c "^Changes to be committed:$") > 0 ]]; then
+    echo -n " ✘"
+  fi
+  if [[ $(echo ${gitstat} | grep -c "^\(Untracked files:\|Changed but not updated:\|Changes not staged for commit:\)$") > 0 ]]; then
+    echo -n " ?"
+  fi
+  if [[ $(echo ${gitstat} | grep -v '^$' | wc -l | tr -d ' ') == 0 ]]; then
+    echo -n ""
+  fi
+}
+
+# Git: branch/detached head, dirty status
+prompt_git() {
+  local ref dirty
+    if $(git rev-parse --is-inside-work-tree >/dev/null 2>&1); then
+      dirty=$(parse_git_status)
+      ref=$(git symbolic-ref HEAD 2> /dev/null) || ref="➦ $(git show-ref --head -s --abbrev |head -n1 2> /dev/null)"
+      if [[ -n $dirty ]]; then
+        prompt_segment none yellow
+      else
+        prompt_segment none green
+      fi
+      if [[ $(git tag -l | wc -l | tr -d ' ') > 0 ]]; then
+        tag=$(git describe --tags `git rev-list --tags --max-count=1`)
+      fi
+      echo -n " ${ref/refs\/heads\//⭠ }$dirty"
+      if [[ -n $tag ]]; then
+        prompt_segment none red
+        echo -n " ($tag)"
+      fi
+    fi
+}
+
+parse_vagrant_status() {
+  local vagrantstat;
+  vagrantstat=$(vagrant status 2>/dev/null | grep '\(saved\|running\|poweroff\|not created\)')
+  echo -n $vagrantstat
+}
+
+prompt_command() {
+  local dirty
+    prompt_segment none blue
+    echo -n "❯"
+    if [[ -z $(vagrant status >/dev/null 2>&1 | grep "is required") ]]; then
+      dirty=$(parse_vagrant_status)
+      if [[ $(echo $dirty | grep -c "\(saved\|poweroff\)") > 0 ]]; then
+        prompt_segment none red
+      fi
+      if [[ $(echo $dirty | grep -c "running") > 0 ]]; then
+        prompt_segment none green
+      fi
+      if [[ $(echo $dirty | grep -c "not created") > 0 ]]; then
+        prompt_segment none yellow
+      fi
+      echo -n "❯"
+    fi
+    prompt_end
+}
+
+# Dir: current working directory
+prompt_dir() {
+  collapse_pwd
+  prompt_segment none blue ${_collapse_pwd}
+}
+
+# Status:
+# - was there an error
+# - am I root
+# - are there background jobs?
+prompt_status() {
+  local symbols
+  symbols=()
+  [[ $RETVAL -ne 0 ]] && symbols+=" %{%F{red}%}✘"
+  [[ $UID -eq 0 ]] && symbols+=" %{%F{yellow}%}⚡"
+  [[ $(jobs -l | wc -l) -gt 0 ]] && symbols+=" %{%F{cyan}%}⚙"
+  [[ -n "$symbols" ]] && prompt_segment default none " $symbols"
+}
+
+
+
+function prompt_charmander_setup() {
+
+
+  ZSH_THEME_GIT_PROMPT_PREFIX=" on %{$fg[yellow]%}"
+  ZSH_THEME_GIT_PROMPT_SUFFIX="%{$reset_color%}"
+  ZSH_THEME_GIT_PROMPT_DIRTY=" %{$fg[white]%}✘"
+  ZSH_THEME_GIT_PROMPT_UNTRACKED=" %{$fg[white]%}?"
+  ZSH_THEME_GIT_PROMPT_CLEAN=""
+  export LSCOLORS="ExGxBxDxCxEgEdxbxgaHaH"
+
+  PROMPT='%{%f%b%k%}$(build_prompt)
+  $(prompt_command)'
+  RPROMPT=''
+
+}
+
+function collapse_pwd {
+  local pwd="${PWD/#$HOME/~}"
+
+  if [[ "$pwd" == (#m)[/~] ]]; then
+    _collapse_pwd="$MATCH"
+    unset MATCH
+  else
+    _collapse_pwd="${${${(@j:/:M)${(@s:/:)pwd}##.#?}:h}%/}/${pwd:t}"
+  fi
+}
+
+
+prompt_charmander_setup "$@"

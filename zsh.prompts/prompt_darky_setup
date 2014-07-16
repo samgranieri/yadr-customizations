@@ -1,0 +1,71 @@
+# Load dependencies.
+pmodload 'helper'
+
+function prompt_darky_precmd {
+  setopt LOCAL_OPTIONS
+  unsetopt XTRACE KSH_ARRAYS
+
+  # Get Git repository information.
+  if (( $+functions[git-info] )); then
+    git-info
+  fi
+}
+
+function prompt_darky_setup {
+  setopt LOCAL_OPTIONS
+  unsetopt XTRACE KSH_ARRAYS
+  prompt_opts=(cr percent subst)
+
+  # Load required functions.
+  autoload -Uz add-zsh-hook 
+
+  # Add hook for calling git-info before each command.
+  add-zsh-hook precmd prompt_darky_precmd
+
+  # Set editor-info parameters.
+  zstyle ':prezto:module:editor:info:completing' format '%B%F{red}...%f%b'
+  #zstyle ':prezto:module:editor:info:keymap:primary' format '%B%F{blue}❯%F{green}❯%f%b'
+  #zstyle ':prezto:module:editor:info:keymap:primary:overwrite' format ' %F{red}♺%f'
+  #zstyle ':prezto:module:editor:info:keymap:alternate' format ' %B%F{green}❮%F{yellow}❮%F{red}❮%f%b'
+
+  # Set git-info parameters.
+  zstyle ':prezto:module:git:info' verbose 'yes'
+  zstyle ':prezto:module:git:info:action' format ':%%B%F{yellow}%s%f%%b'
+  zstyle ':prezto:module:git:info:added' format ' %%B%F{green}✚%f%%b'
+  zstyle ':prezto:module:git:info:ahead' format ' %%B%F{yellow}⬆%f%%b'
+  zstyle ':prezto:module:git:info:behind' format ' %%B%F{yellow}⬇%f%%b'
+  zstyle ':prezto:module:git:info:branch' format '%F{yellow}%b%f'
+  zstyle ':prezto:module:git:info:commit' format ':%F{green}%.7c%f'
+  zstyle ':prezto:module:git:info:deleted' format ' %%B%F{red}✖%f%%b'
+  zstyle ':prezto:module:git:info:modified' format ' %%B%F{blue}✱%f%%b'
+  zstyle ':prezto:module:git:info:position' format ':%F{red}%p%f'
+  zstyle ':prezto:module:git:info:renamed' format ' %%B%F{magenta}➜%f%%b'
+  zstyle ':prezto:module:git:info:stashed' format ' %%B%F{cyan}✭%f%%b'
+  zstyle ':prezto:module:git:info:unmerged' format ' %%B%F{yellow}═%f%%b'
+  zstyle ':prezto:module:git:info:untracked' format ' %%B%F{white}◼%f%%b'
+  zstyle ':prezto:module:git:info:keys' format 'prompt' 'on %F{yellow}$(coalesce "%b" "%p" "%c")%s%f%A%B%S%a%d%m%r%U'
+
+  # Prompt is split in 2 parts right and left
+  # Left part is split in 3 parts : user@host, path and git
+  _prompt_user="%(!.%F{red}.%F{blue})%n%f%F{green}@%F{cyan}%m%f"
+
+  _prompt_git='${git_info:+${(e)git_info[prompt]}}'
+
+  local _prompt_user_width=${#${(S%%)_prompt_user//(\%([KF1]|)\{*\}|\%[Bbkf])}}
+
+  #TODO local _prompt_git_width=${#${(S%%)_prompt_git//(\%([KF1]|)\{*\}|\%[Bbkf])}}
+
+  local prompt_pwd_size=$(( COLUMNS
+                                  - _prompt_user_width
+				  - 5 ))
+
+  _prompt_pwd="%F{green}%$prompt_pwd_size<...<%~%<<%f"
+
+  # Define prompts.
+  PROMPT="$_prompt_user in $_prompt_pwd $_prompt_git
+%B%(!.%F{red}❯%F{yellow}❯.%F{blue}❯%F{green}❯)%f%b "
+  RPROMPT='${editor_info[overwrite]}%(?:: %F{red}⏎%f)${VIM:+" %B%F{green}V%f%b"}'
+  SPROMPT='zsh: correct %F{red}%R%f to %F{green}%r%f [nyae]? '
+}
+
+prompt_darky_setup "$@"
